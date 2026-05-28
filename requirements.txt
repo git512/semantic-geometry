@@ -1,0 +1,7 @@
+sentence-transformers
+numpy
+scipy
+pandas
+scikit-learn
+matplotlib
+pyyaml

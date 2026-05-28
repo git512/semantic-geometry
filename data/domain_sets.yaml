@@ -1,0 +1,144 @@
+domains:
+  electrical_flow:
+    terms:
+      - current
+      - voltage
+      - resistance
+      - power
+      - circuit
+      - ground
+      - capacitance
+      - impedance
+
+  fluid_flow:
+    terms:
+      - flow
+      - pressure
+      - restriction
+      - work
+      - pipe
+      - reservoir
+      - storage
+      - turbulence
+
+  social_pressure:
+    terms:
+      - influence
+      - expectation
+      - conformity
+      - status
+      - network
+      - boundary
+      - obligation
+      - conflict
+
+  mechanical_force:
+    terms:
+      - force
+      - load
+      - friction
+      - work
+      - linkage
+      - anchor
+      - tension
+      - collision
+
+  music_harmony:
+    terms:
+      - melody
+      - chord
+      - dissonance
+      - resolution
+      - scale
+      - tonic
+      - timbre
+      - rhythm
+
+  color_harmony:
+    terms:
+      - hue
+      - palette
+      - contrast
+      - balance
+      - spectrum
+      - neutral
+      - saturation
+      - pattern
+
+  emotional_valence:
+    terms:
+      - joy
+      - calm
+      - tension
+      - relief
+      - mood
+      - numbness
+      - intensity
+      - fluctuation
+
+  thermal_flow:
+    terms:
+      - heat
+      - temperature
+      - insulation
+      - energy
+      - conduit
+      - sink
+      - storage
+      - convection
+
+  economic_exchange:
+    terms:
+      - money
+      - price
+      - scarcity
+      - labor
+      - market
+      - reserve
+      - capital
+      - volatility
+
+  ecological_balance:
+    terms:
+      - nutrients
+      - carrying_capacity
+      - competition
+      - productivity
+      - habitat
+      - refuge
+      - biomass
+      - disturbance
+
+  signal_processing:
+    terms:
+      - signal
+      - amplitude
+      - noise
+      - information
+      - channel
+      - baseline
+      - memory
+      - interference
+
+  linguistic_meaning:
+    terms:
+      - utterance
+      - emphasis
+      - ambiguity
+      - interpretation
+      - context
+      - convention
+      - reference
+      - contradiction
+
+metaphor_pairs:
+  - [electrical_flow, fluid_flow]
+  - [social_pressure, mechanical_force]
+  - [music_harmony, color_harmony]
+  - [thermal_flow, economic_exchange]
+  - [ecological_balance, economic_exchange]
+  - [signal_processing, linguistic_meaning]
+  - [emotional_valence, color_harmony]
+  - [mechanical_force, social_pressure]
+  - [fluid_flow, economic_exchange]
+  - [signal_processing, electrical_flow]
