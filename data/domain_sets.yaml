@@ -1,135 +1,327 @@
 domains:
   electrical_flow:
-    terms:
-      - current
-      - voltage
-      - resistance
-      - power
-      - circuit
-      - ground
-      - capacitance
-      - impedance
+    concepts:
+      - id: current
+        label: electrical current
+        description: movement of electric charge through a conductor
+      - id: voltage
+        label: voltage difference
+        description: electrical potential difference that drives current
+      - id: resistance
+        label: electrical resistance
+        description: opposition to current flow
+      - id: power
+        label: electrical power
+        description: rate of energy transfer in an electrical circuit
+      - id: circuit_path
+        label: circuit path
+        description: conductive route through which current can flow
+      - id: ground_reference
+        label: electrical ground reference
+        description: reference potential or return path in a circuit
+      - id: capacitance_storage
+        label: electrical capacitance
+        description: ability to store charge and energy in an electric field
+      - id: impedance_dynamic
+        label: electrical impedance
+        description: frequency-dependent opposition to alternating current
 
   fluid_flow:
-    terms:
-      - flow
-      - pressure
-      - restriction
-      - work
-      - pipe
-      - reservoir
-      - storage
-      - turbulence
+    concepts:
+      - id: flow_rate
+        label: fluid flow rate
+        description: movement of liquid or gas through a channel
+      - id: pressure_difference
+        label: pressure difference
+        description: force imbalance that drives fluid motion
+      - id: restriction
+        label: flow restriction
+        description: narrowing or obstruction that resists movement
+      - id: work_rate
+        label: hydraulic work rate
+        description: rate at which flowing fluid transfers useful energy
+      - id: pipe_path
+        label: pipe pathway
+        description: bounded route through which fluid can travel
+      - id: reservoir_reference
+        label: reservoir reference level
+        description: source or return body that anchors the fluid system
+      - id: storage_capacity
+        label: fluid storage capacity
+        description: ability of a vessel or basin to hold fluid
+      - id: turbulence_dynamic
+        label: turbulent impedance
+        description: dynamic disorder that disrupts smooth flow
 
   social_pressure:
-    terms:
-      - influence
-      - expectation
-      - conformity
-      - status
-      - network
-      - boundary
-      - obligation
-      - conflict
+    concepts:
+      - id: influence_flow
+        label: social influence flow
+        description: movement of norms or opinions through a group
+      - id: expectation_gradient
+        label: expectation gradient
+        description: difference in social expectation that pushes behavior
+      - id: conformity_resistance
+        label: conformity resistance
+        description: opposition to pressure from group norms
+      - id: status_power
+        label: status power
+        description: capacity to convert social position into action
+      - id: network_path
+        label: social network path
+        description: relationship route through which influence travels
+      - id: boundary_reference
+        label: social boundary reference
+        description: norm or role that defines where behavior returns
+      - id: obligation_storage
+        label: stored obligation
+        description: accumulated expectation or debt within a relationship
+      - id: conflict_turbulence
+        label: social conflict turbulence
+        description: unstable interaction caused by clashing pressures
 
   mechanical_force:
-    terms:
-      - force
-      - load
-      - friction
-      - work
-      - linkage
-      - anchor
-      - tension
-      - collision
+    concepts:
+      - id: applied_force
+        label: applied mechanical force
+        description: push or pull transmitted through a body
+      - id: load_gradient
+        label: mechanical load gradient
+        description: difference in load that creates motion or strain
+      - id: friction_resistance
+        label: frictional resistance
+        description: opposition to motion between contacting surfaces
+      - id: mechanical_work
+        label: mechanical work
+        description: energy transfer produced by force through distance
+      - id: linkage_path
+        label: mechanical linkage path
+        description: connected route through which force is transmitted
+      - id: anchor_reference
+        label: anchor reference point
+        description: fixed point against which forces are measured
+      - id: elastic_tension
+        label: stored elastic tension
+        description: accumulated strain energy in a deformed body
+      - id: collision_instability
+        label: collision instability
+        description: abrupt disturbance from bodies impacting or jamming
 
   music_harmony:
-    terms:
-      - melody
-      - chord
-      - dissonance
-      - resolution
-      - scale
-      - tonic
-      - timbre
-      - rhythm
+    concepts:
+      - id: melodic_motion
+        label: melodic motion
+        description: movement of pitch patterns through musical time
+      - id: harmonic_tension
+        label: harmonic tension
+        description: tonal pressure that seeks continuation or release
+      - id: dissonance_resistance
+        label: dissonance
+        description: intervallic roughness that resists stable rest
+      - id: resolution_release
+        label: harmonic resolution
+        description: arrival that transforms tension into closure
+      - id: scale_path
+        label: scale pathway
+        description: ordered pitch route that guides musical movement
+      - id: tonic_reference
+        label: tonic reference
+        description: central pitch or chord that anchors tonal relations
+      - id: timbre_color
+        label: timbral color
+        description: stored character of sound quality and texture
+      - id: rhythmic_variation
+        label: rhythmic variation
+        description: changing temporal pattern that adds motion
 
   color_harmony:
-    terms:
-      - hue
-      - palette
-      - contrast
-      - balance
-      - spectrum
-      - neutral
-      - saturation
-      - pattern
+    concepts:
+      - id: hue_motion
+        label: hue movement
+        description: transition among color positions across a composition
+      - id: contrast_tension
+        label: color contrast tension
+        description: perceptual pressure created by opposing colors
+      - id: clash_resistance
+        label: color clash
+        description: visual incompatibility that resists harmonious rest
+      - id: balance_resolution
+        label: color balance resolution
+        description: arrangement that stabilizes competing visual forces
+      - id: spectrum_path
+        label: spectrum pathway
+        description: ordered route through hue relationships
+      - id: neutral_reference
+        label: neutral reference color
+        description: anchoring gray or neutral point for color relations
+      - id: saturation_intensity
+        label: saturation intensity
+        description: stored vividness or strength of a color
+      - id: pattern_variation
+        label: visual pattern variation
+        description: changing arrangement that creates visual rhythm
 
   emotional_valence:
-    terms:
-      - joy
-      - calm
-      - tension
-      - relief
-      - mood
-      - numbness
-      - intensity
-      - fluctuation
+    concepts:
+      - id: affective_motion
+        label: affective motion
+        description: movement from one feeling state toward another
+      - id: emotional_tension
+        label: emotional tension
+        description: pressure of unresolved feeling or anticipation
+      - id: aversive_resistance
+        label: aversive resistance
+        description: inner opposition to an unwanted emotional state
+      - id: relief_resolution
+        label: emotional relief
+        description: release that resolves accumulated affective tension
+      - id: mood_context
+        label: mood context
+        description: background emotional field that guides interpretation
+      - id: numb_reference
+        label: neutral numb reference
+        description: low-valence baseline against which feeling is measured
+      - id: intensity_storage
+        label: emotional intensity
+        description: accumulated strength of a felt state
+      - id: fluctuation_instability
+        label: emotional fluctuation
+        description: unstable variation in affective state
 
   thermal_flow:
-    terms:
-      - heat
-      - temperature
-      - insulation
-      - energy
-      - conduit
-      - sink
-      - storage
-      - convection
+    concepts:
+      - id: heat_flow
+        label: heat flow
+        description: movement of thermal energy through matter or space
+      - id: temperature_gradient
+        label: temperature gradient
+        description: difference in temperature that drives heat transfer
+      - id: insulation_resistance
+        label: thermal insulation
+        description: opposition to the movement of heat
+      - id: energy_transfer_rate
+        label: thermal power
+        description: rate at which heat energy is transferred
+      - id: conduit_path
+        label: thermal conduit path
+        description: material route through which heat travels
+      - id: heat_sink_reference
+        label: heat sink reference
+        description: body or environment that absorbs and anchors heat flow
+      - id: heat_capacity_storage
+        label: heat capacity
+        description: ability of matter to store thermal energy
+      - id: convection_instability
+        label: convection turbulence
+        description: unstable fluid motion driven by heat differences
 
   economic_exchange:
-    terms:
-      - money
-      - price
-      - scarcity
-      - labor
-      - market
-      - reserve
-      - capital
-      - volatility
+    concepts:
+      - id: money_flow
+        label: money flow
+        description: movement of currency or value through transactions
+      - id: price_gradient
+        label: price difference
+        description: value difference that motivates exchange
+      - id: scarcity_resistance
+        label: scarcity constraint
+        description: limited supply that resists easy exchange
+      - id: labor_productivity
+        label: labor productivity
+        description: rate at which effort converts into economic value
+      - id: market_pathway
+        label: market pathway
+        description: institutional route through which exchange occurs
+      - id: reserve_reference
+        label: reserve reference
+        description: stored resource or benchmark that anchors valuation
+      - id: capital_storage
+        label: capital accumulation
+        description: stored productive value available for future use
+      - id: volatility_instability
+        label: market volatility
+        description: unstable fluctuation in prices or exchange conditions
 
   ecological_balance:
-    terms:
-      - nutrients
-      - carrying_capacity
-      - competition
-      - productivity
-      - habitat
-      - refuge
-      - biomass
-      - disturbance
+    concepts:
+      - id: nutrient_flow
+        label: nutrient flow
+        description: movement of matter and energy through an ecosystem
+      - id: carrying_capacity_gradient
+        label: carrying capacity pressure
+        description: difference between population demand and ecosystem support
+      - id: competition_resistance
+        label: ecological competition
+        description: resistance created by organisms contesting resources
+      - id: ecosystem_productivity
+        label: ecosystem productivity
+        description: rate at which living systems produce biomass
+      - id: habitat_pathway
+        label: habitat corridor
+        description: route through which organisms or resources move
+      - id: refuge_reference
+        label: ecological refuge
+        description: stabilizing place that anchors survival during stress
+      - id: biomass_storage
+        label: biomass storage
+        description: accumulated living matter within an ecosystem
+      - id: disturbance_instability
+        label: ecological disturbance
+        description: disruptive event that destabilizes relationships
 
   signal_processing:
-    terms:
-      - signal
-      - amplitude
-      - noise
-      - information
-      - channel
-      - baseline
-      - memory
-      - interference
+    concepts:
+      - id: signal_flow
+        label: signal flow
+        description: movement of encoded information through a system
+      - id: amplitude_difference
+        label: amplitude difference
+        description: measurable contrast that drives detection
+      - id: noise_resistance
+        label: noise interference
+        description: unwanted variation that opposes clear transmission
+      - id: information_rate
+        label: information rate
+        description: rate at which meaningful signal is transmitted
+      - id: channel_path
+        label: communication channel
+        description: medium or path through which a signal travels
+      - id: baseline_reference
+        label: signal baseline reference
+        description: reference level against which signal is measured
+      - id: memory_storage
+        label: signal memory storage
+        description: retained information available to later processing
+      - id: interference_instability
+        label: signal interference
+        description: unstable distortion caused by overlapping signals
 
   linguistic_meaning:
-    terms:
-      - utterance
-      - emphasis
-      - ambiguity
-      - interpretation
-      - context
-      - convention
-      - reference
-      - contradiction
+    concepts:
+      - id: meaning_flow
+        label: meaning flow
+        description: movement of sense through words and discourse
+      - id: emphasis_difference
+        label: emphasis difference
+        description: contrast in stress or salience that guides interpretation
+      - id: ambiguity_resistance
+        label: semantic ambiguity
+        description: uncertainty that resists a single clear interpretation
+      - id: interpretation_rate
+        label: interpretive uptake
+        description: rate at which expression becomes understood meaning
+      - id: context_path
+        label: contextual pathway
+        description: route of surrounding cues that carries meaning
+      - id: convention_reference
+        label: linguistic convention reference
+        description: shared norm that anchors interpretation
+      - id: reference_storage
+        label: referential memory
+        description: stored association between expression and object
+      - id: contradiction_instability
+        label: semantic contradiction
+        description: unstable conflict among meanings or propositions
 
 metaphor_pairs:
   - [electrical_flow, fluid_flow]
