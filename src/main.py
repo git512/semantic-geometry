@@ -26,6 +26,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from rich.table import Table
 
 from .embedder import Embedder
+from .dimensionality import dimensionality_curves, pca_spectrum
 from .geometry import (
     Concept,
     build_domain_shape,
@@ -37,6 +38,7 @@ from .geometry import (
     random_permutation_distribution,
     random_similarity_distribution,
 )
+from .plausibility import judge_mapping_with_llm, score_mapping_plausibility
 from .plots import (
     plot_actual_vs_random,
     plot_alignment_improvements,
@@ -44,6 +46,13 @@ from .plots import (
     plot_ordered_vs_optimal,
     plot_pair_z_scores,
     plot_permutation_control_example,
+    plot_component_similarity_examples,
+    plot_dimensionality_recovery_curves,
+    plot_domain_pca_spectra,
+    plot_effective_dimensionality,
+    plot_k90_shape_recovery,
+    plot_plausibility_vs_geometry,
+    plot_procrustes_orientation_curves,
     plot_shape_similarity_heatmap,
 )
 
@@ -51,6 +60,8 @@ from .plots import (
 DEFAULT_MODEL = "sentence-transformers/all-mpnet-base-v2"
 VALID_EMBED_TEXT = {"label_only", "label_plus_description"}
 VALID_ALIGNMENT = {"ordered", "optimal", "both"}
+VALID_REDUCTION = {"pca", "mds"}
+VALID_ALIGNMENT_OBJECTIVE = {"geometry", "combined"}
 console = Console()
 error_console = Console(stderr=True)
 
@@ -68,6 +79,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42, help="Deterministic random seed.")
     parser.add_argument("--embed-text", choices=sorted(VALID_EMBED_TEXT), default="label_only")
     parser.add_argument("--alignment", choices=sorted(VALID_ALIGNMENT), default="both")
+    parser.add_argument("--alignment-objective", choices=sorted(VALID_ALIGNMENT_OBJECTIVE), default="geometry")
+    parser.add_argument("--reduction", choices=sorted(VALID_REDUCTION), default="pca")
+    parser.add_argument("--geometry-weight", type=float, default=0.75)
+    parser.add_argument("--plausibility-weight", type=float, default=0.25)
+    parser.add_argument("--llm-judge", action="store_true", help="Use an optional OpenAI-compatible local judge.")
+    parser.add_argument("--llm-endpoint", default="http://localhost:19090/v1/chat/completions")
+    parser.add_argument("--llm-model", default="local-model")
+    parser.add_argument("--llm-api-key", default="")
+    parser.add_argument("--v3-deep", action="store_true", help="Deep V3 run with dimensionality and plausibility outputs.")
+    parser.add_argument("--models", nargs="+", help="Optional model list for future multi-model comparisons.")
+    parser.add_argument("--compare-embed-text-modes", action="store_true")
     parser.add_argument("--max-bruteforce-n", type=int, default=8)
     parser.add_argument("--alignment-restarts", type=int, default=200)
     parser.add_argument("--alignment-steps", type=int, default=1000)
@@ -84,8 +106,8 @@ def parse_args() -> argparse.Namespace:
 
 
 def apply_run_mode(args: argparse.Namespace) -> argparse.Namespace:
-    if args.quick and args.deep:
-        raise ValueError("Use only one of --quick or --deep.")
+    if sum(bool(flag) for flag in (args.quick, args.deep, args.v3_deep)) > 1:
+        raise ValueError("Use only one of --quick, --deep, or --v3-deep.")
     if args.quick:
         args.random_trials = 200
         args.permutation_trials = 200
@@ -93,6 +115,12 @@ def apply_run_mode(args: argparse.Namespace) -> argparse.Namespace:
         args.alignment_restarts = 25
         args.alignment_steps = 200
     elif args.deep:
+        args.random_trials = 10000
+        args.permutation_trials = 10000
+        args.bootstrap_samples = 5000
+        args.alignment_restarts = 1000
+        args.alignment_steps = 5000
+    elif args.v3_deep:
         args.random_trials = 10000
         args.permutation_trials = 10000
         args.bootstrap_samples = 5000
@@ -151,11 +179,14 @@ def parse_concepts(domain_name: str, raw_concepts) -> list[Concept]:
         concept_id = item.get("id")
         label = item.get("label")
         description = item.get("description", "")
+        role = item.get("role", "unknown")
         if not isinstance(concept_id, str) or not isinstance(label, str):
             raise ValueError(f"Concepts in '{domain_name}' need string 'id' and 'label'.")
         if not isinstance(description, str):
             raise ValueError(f"Concept '{concept_id}' in '{domain_name}' has a non-string description.")
-        concepts.append(Concept(id=concept_id, label=label, description=description))
+        if not isinstance(role, str):
+            raise ValueError(f"Concept '{concept_id}' in '{domain_name}' has a non-string role.")
+        concepts.append(Concept(id=concept_id, label=label, description=description, role=role))
 
     return concepts
 
@@ -172,6 +203,21 @@ def main() -> int:
         return 1
 
     thread_controller = configure_cpu_threads(args.cpu_threads)
+    if args.alignment_objective != "geometry":
+        console.print(
+            "[yellow]Warning:[/yellow] --alignment-objective combined is parsed but V3 currently reports "
+            "post-hoc combined scores; geometry remains the search objective."
+        )
+    if args.models and len(args.models) > 1:
+        console.print(
+            "[yellow]Warning:[/yellow] --models is reserved for aggregate multi-model runs; "
+            "this invocation will use --model only."
+        )
+    if args.compare_embed_text_modes:
+        console.print(
+            "[yellow]Warning:[/yellow] --compare-embed-text-modes is reserved for aggregate comparison; "
+            "this invocation will use the selected --embed-text mode."
+        )
     rng = np.random.default_rng(args.seed)
     outdir = Path(args.outdir)
     plots_dir = outdir / "plots"
@@ -201,13 +247,40 @@ def main() -> int:
                 shapes[name] = build_domain_shape(name, concepts, embedder.embed_terms(texts))
                 progress.advance(embed_task)
 
+            aux_task = progress.add_task("Embedding plausibility texts", total=2)
+            label_embeddings = build_text_embedding_index(
+                embedder,
+                (concept.label for concepts in domains.values() for concept in concepts),
+            )
+            progress.advance(aux_task)
+            description_embeddings = build_text_embedding_index(
+                embedder,
+                (
+                    concept.description
+                    for concepts in domains.values()
+                    for concept in concepts
+                    if concept.description
+                ),
+            )
+            progress.advance(aux_task)
+
             compare_task = progress.add_task("Evaluating metaphor pairs", total=len(metaphor_pairs))
-            rows, alignments, all_random_domain_values, permutation_examples = evaluate_pairs(
+            (
+                rows,
+                alignments,
+                all_random_domain_values,
+                permutation_examples,
+                dimensionality_rows,
+                component_rows,
+                plausibility_rows,
+            ) = evaluate_pairs(
                 args=args,
                 shapes=shapes,
                 metaphor_pairs=metaphor_pairs,
                 rng=rng,
                 progress=progress,
+                label_embeddings=label_embeddings,
+                description_embeddings=description_embeddings,
             )
             progress.advance(compare_task, len(metaphor_pairs))
 
@@ -222,6 +295,9 @@ def main() -> int:
                 alignments=alignments,
                 all_random_domain_values=all_random_domain_values,
                 permutation_examples=permutation_examples,
+                dimensionality_rows=dimensionality_rows,
+                component_rows=component_rows,
+                plausibility_rows=plausibility_rows,
             )
             progress.advance(output_task)
     except Exception as exc:
@@ -267,12 +343,31 @@ def configure_cpu_threads(cpu_threads: int):
     return controller
 
 
-def evaluate_pairs(args, shapes, metaphor_pairs, rng, progress) -> tuple[list[dict], list[dict], list[float], dict]:
+def build_text_embedding_index(embedder: Embedder, texts) -> dict[str, np.ndarray]:
+    unique_texts = sorted({text for text in texts if text})
+    if not unique_texts:
+        return {}
+    vectors = embedder.embed_terms(unique_texts)
+    return {text: vectors[index] for index, text in enumerate(unique_texts)}
+
+
+def evaluate_pairs(
+    args,
+    shapes,
+    metaphor_pairs,
+    rng,
+    progress,
+    label_embeddings,
+    description_embeddings,
+) -> tuple[list[dict], list[dict], list[float], dict, list[dict], list[dict], list[dict]]:
     intended_pair_keys = {pair_key(pair) for pair in metaphor_pairs}
     rows = []
     alignments = []
     all_random_domain_values = []
     permutation_examples = {}
+    dimensionality_rows = []
+    component_rows = []
+    plausibility_rows = []
     live_plot = LiveHistogram() if args.live_plot else None
 
     for domain_a, domain_b in metaphor_pairs:
@@ -318,6 +413,40 @@ def evaluate_pairs(args, shapes, metaphor_pairs, rng, progress) -> tuple[list[di
             method_used = alignment.method_used
 
         optimal_shape_b = permute_shape(shape_b, permutation)
+        mapping = {
+            shape_a.concepts[index].id: shape_b.concepts[permutation[index]].id
+            for index in range(len(shape_a.concepts))
+        }
+
+        dim_task = progress.add_task(f"Dimensionality analysis: {domain_a} / {domain_b}", total=1)
+        pair_dim_rows, pair_component_rows, dim_summary = dimensionality_curves(
+            shape_a,
+            optimal_shape_b,
+            optimal.pearson,
+            args.reduction,
+        )
+        dimensionality_rows.extend(pair_dim_rows)
+        component_rows.extend(pair_component_rows)
+        progress.advance(dim_task)
+
+        plaus_task = progress.add_task(f"Plausibility scoring: {domain_a} / {domain_b}", total=1)
+        pair_plausibility_rows = score_pair_plausibility(
+            args,
+            domain_a,
+            domain_b,
+            shape_a,
+            shape_b,
+            permutation,
+            label_embeddings,
+            description_embeddings,
+        )
+        plausibility_rows.extend(pair_plausibility_rows)
+        average_plausibility = float(np.nanmean([row["final_plausibility_score"] for row in pair_plausibility_rows]))
+        combined_score = float(args.geometry_weight * optimal.pearson + args.plausibility_weight * average_plausibility)
+        suspicious_mapping = min(pair_plausibility_rows, key=lambda row: row["final_plausibility_score"])
+        _, domain_a_dim = pca_spectrum(shape_a)
+        _, domain_b_dim = pca_spectrum(shape_b)
+        progress.advance(plaus_task)
 
         domain_task = progress.add_task(
             f"Random domain controls: {domain_a} / {domain_b}",
@@ -386,10 +515,6 @@ def evaluate_pairs(args, shapes, metaphor_pairs, rng, progress) -> tuple[list[di
         domain_stats = control_stats(optimal.pearson, random_domain_values)
         permutation_stats = control_stats(optimal.pearson, random_permutation_values)
         improvement = float(optimal.pearson - ordered.pearson)
-        mapping = {
-            shape_a.concepts[index].id: shape_b.concepts[permutation[index]].id
-            for index in range(len(shape_a.concepts))
-        }
 
         rows.append(
             {
@@ -418,6 +543,30 @@ def evaluate_pairs(args, shapes, metaphor_pairs, rng, progress) -> tuple[list[di
                 "ordered_similarity_ci_high": ordered_ci_high,
                 "optimal_similarity_ci_low": optimal_ci_low,
                 "optimal_similarity_ci_high": optimal_ci_high,
+                "domain_a_participation_ratio": domain_a_dim.participation_ratio,
+                "domain_b_participation_ratio": domain_b_dim.participation_ratio,
+                "pair_mean_participation_ratio": float(
+                    np.nanmean([domain_a_dim.participation_ratio, domain_b_dim.participation_ratio])
+                ),
+                "domain_a_spectral_entropy_dim": domain_a_dim.spectral_entropy,
+                "domain_b_spectral_entropy_dim": domain_b_dim.spectral_entropy,
+                "pair_mean_spectral_entropy_dim": float(
+                    np.nanmean([domain_a_dim.spectral_entropy, domain_b_dim.spectral_entropy])
+                ),
+                "best_k_by_orientation": dim_summary["best_k_by_orientation"],
+                "best_orientation_similarity": dim_summary["best_orientation_similarity"],
+                "best_procrustes_disparity": dim_summary["best_procrustes_disparity"],
+                "k_90_similarity": dim_summary["k_90_similarity"],
+                "k_95_similarity": dim_summary["k_95_similarity"],
+                "k_80_shape_recovery": dim_summary["k_80_shape_recovery"],
+                "k_90_shape_recovery": dim_summary["k_90_shape_recovery"],
+                "k_95_shape_recovery": dim_summary["k_95_shape_recovery"],
+                "best_k_by_shape_recovery": dim_summary["best_k_by_shape_recovery"],
+                "average_plausibility_score": average_plausibility,
+                "combined_score": combined_score,
+                "most_suspicious_mapping": (
+                    f"{suspicious_mapping['concept_a_id']}->{suspicious_mapping['concept_b_id']}"
+                ),
             }
         )
         alignments.append(
@@ -432,12 +581,23 @@ def evaluate_pairs(args, shapes, metaphor_pairs, rng, progress) -> tuple[list[di
                 "domain_b_labels_ordered": shape_b.labels,
                 "domain_b_labels_optimal": optimal_shape_b.labels,
                 "method_used": method_used,
+                "average_plausibility_score": average_plausibility,
+                "combined_score": combined_score,
+                "mapping_plausibility": pair_plausibility_rows,
             }
         )
 
     if live_plot is not None:
         live_plot.pause()
-    return rows, alignments, all_random_domain_values, permutation_examples
+    return (
+        rows,
+        alignments,
+        all_random_domain_values,
+        permutation_examples,
+        dimensionality_rows,
+        component_rows,
+        plausibility_rows,
+    )
 
 
 def control_stats(actual: float, random_values: np.ndarray) -> dict[str, float]:
@@ -450,6 +610,49 @@ def control_stats(actual: float, random_values: np.ndarray) -> dict[str, float]:
         "percentile": float(100.0 * np.mean(random_values <= actual)),
         "p_estimate": float(np.mean(random_values >= actual)),
     }
+
+
+def score_pair_plausibility(
+    args,
+    domain_a: str,
+    domain_b: str,
+    shape_a,
+    shape_b,
+    permutation: tuple[int, ...],
+    label_embeddings: dict[str, np.ndarray],
+    description_embeddings: dict[str, np.ndarray],
+) -> list[dict]:
+    rows = []
+    for index, concept_a in enumerate(shape_a.concepts):
+        concept_b = shape_b.concepts[permutation[index]]
+        llm_score = None
+        if args.llm_judge:
+            try:
+                llm_score = judge_mapping_with_llm(
+                    args.llm_endpoint,
+                    args.llm_model,
+                    args.llm_api_key,
+                    concept_a,
+                    concept_b,
+                )
+            except Exception as exc:
+                console.print(
+                    f"[yellow]Warning:[/yellow] LLM judge failed for "
+                    f"{concept_a.id}->{concept_b.id}: {exc}"
+                )
+        row = score_mapping_plausibility(
+            concept_a,
+            concept_b,
+            label_embeddings[concept_a.label],
+            label_embeddings[concept_b.label],
+            description_embeddings.get(concept_a.description),
+            description_embeddings.get(concept_b.description),
+            llm_score,
+        )
+        row["domain_a"] = domain_a
+        row["domain_b"] = domain_b
+        rows.append(row)
+    return rows
 
 
 class LiveHistogram:
@@ -504,12 +707,34 @@ def write_outputs(
     alignments,
     all_random_domain_values,
     permutation_examples,
+    dimensionality_rows,
+    component_rows,
+    plausibility_rows,
 ) -> None:
     results = pd.DataFrame(rows)
     if results.empty:
         raise ValueError("No valid metaphor pairs were evaluated.")
 
     results.to_csv(outdir / "results.csv", index=False)
+    pd.DataFrame(dimensionality_rows).to_csv(outdir / "dimensionality_curves.csv", index=False)
+    component_columns = [
+        "domain_a",
+        "domain_b",
+        "component",
+        "component_similarity",
+        "a_explained_variance_ratio",
+        "b_explained_variance_ratio",
+    ]
+    pd.DataFrame(component_rows, columns=component_columns).to_csv(outdir / "component_similarity.csv", index=False)
+    pd.DataFrame(plausibility_rows).to_csv(outdir / "alignment_plausibility.csv", index=False)
+    spectra_rows = []
+    domain_dim_rows = []
+    for shape in shapes.values():
+        domain_spectrum_rows, domain_summary = pca_spectrum(shape)
+        spectra_rows.extend(domain_spectrum_rows)
+        domain_dim_rows.append(domain_summary.__dict__)
+    pd.DataFrame(spectra_rows).to_csv(outdir / "domain_pca_spectra.csv", index=False)
+    pd.DataFrame(domain_dim_rows).to_csv(outdir / "domain_dimensionality_summary.csv", index=False)
     with (outdir / "alignments.json").open("w", encoding="utf-8") as handle:
         json.dump(alignments, handle, indent=2)
         handle.write("\n")
@@ -549,6 +774,14 @@ def write_outputs(
         strongest_pair,
         plots_dir / "permutation_control_examples.png",
     )
+    render_v3_plots(
+        plots_dir,
+        results,
+        pd.DataFrame(dimensionality_rows),
+        pd.DataFrame(spectra_rows),
+        pd.DataFrame(domain_dim_rows),
+        pd.DataFrame(component_rows),
+    )
 
     summary = build_summary(args, domains, results, random_domain_array)
     with (outdir / "summary.json").open("w", encoding="utf-8") as handle:
@@ -571,10 +804,18 @@ def build_summary(args, domains, results: pd.DataFrame, random_domain_array: np.
             "random_permutation_z_score": float(row["random_permutation_z_score"]),
         }
 
-    return {
-        "version": 2,
+    orientation_index = results["best_orientation_similarity"].idxmax()
+    efficient_candidates = results[results["optimal_pearson"] >= results["optimal_pearson"].median()]
+    efficient_index = efficient_candidates["k_90_shape_recovery"].idxmin()
+    richest_index = results["k_90_shape_recovery"].idxmax()
+    plausible_index = results["average_plausibility_score"].idxmax()
+    implausible_index = results["average_plausibility_score"].idxmin()
+
+    summary = {
+        "version": 3,
         "model": args.model,
         "embed_text": args.embed_text,
+        "reduction_method": args.reduction,
         "seed": args.seed,
         "number_of_domains": len(domains),
         "number_of_metaphor_pairs": int(len(results)),
@@ -601,7 +842,43 @@ def build_summary(args, domains, results: pd.DataFrame, random_domain_array: np.
         "strongest_pair_by_optimal_similarity": pair_record(strongest_optimal_index),
         "strongest_pair_by_z_score": pair_record(strongest_z_index),
         "weakest_pair": pair_record(weakest_index),
+        "mean_best_orientation_similarity": float(results["best_orientation_similarity"].mean()),
+        "mean_best_procrustes_disparity": float(results["best_procrustes_disparity"].mean()),
+        "mean_k_80_shape_recovery": float(results["k_80_shape_recovery"].mean()),
+        "mean_k_90_shape_recovery": float(results["k_90_shape_recovery"].mean()),
+        "mean_k_95_shape_recovery": float(results["k_95_shape_recovery"].mean()),
+        "mean_participation_ratio": float(results["pair_mean_participation_ratio"].mean()),
+        "mean_spectral_entropy_dim": float(results["pair_mean_spectral_entropy_dim"].mean()),
+        "mean_alignment_plausibility": float(results["average_plausibility_score"].mean()),
+        "mean_combined_score": float(results["combined_score"].mean()),
+        "strongest_pair_by_orientation": pair_record(orientation_index),
+        "strongest_pair_by_dimensional_efficiency": pair_record(efficient_index),
+        "richest_pair_by_dimensionality": pair_record(richest_index),
+        "most_plausible_alignment": pair_record(plausible_index),
+        "least_plausible_alignment": pair_record(implausible_index),
     }
+    return summary
+
+
+def render_v3_plots(
+    plots_dir: Path,
+    results: pd.DataFrame,
+    dimensionality: pd.DataFrame,
+    spectra: pd.DataFrame,
+    domain_dimensionality: pd.DataFrame,
+    component_rows: pd.DataFrame,
+) -> None:
+    plot_dimensionality_recovery_curves(
+        dimensionality,
+        plots_dir / "dimensionality_recovery_curves.png",
+        plots_dir / "dimensionality_curves",
+    )
+    plot_procrustes_orientation_curves(dimensionality, plots_dir / "procrustes_orientation_curves.png")
+    plot_domain_pca_spectra(spectra, plots_dir / "domain_pca_spectra.png")
+    plot_effective_dimensionality(domain_dimensionality, plots_dir / "effective_dimensionality.png")
+    plot_k90_shape_recovery(results, plots_dir / "k90_shape_recovery.png")
+    plot_plausibility_vs_geometry(results, plots_dir / "plausibility_vs_geometry.png")
+    plot_component_similarity_examples(component_rows, results, plots_dir / "component_similarity_examples.png")
 
 
 def build_similarity_heatmap(domain_names: list[str], shapes: dict) -> np.ndarray:
@@ -618,7 +895,7 @@ def build_similarity_heatmap(domain_names: list[str], shapes: dict) -> np.ndarra
 
 
 def print_final_table(results: pd.DataFrame) -> None:
-    table = Table(title="V2 Metaphor Geometry Results")
+    table = Table(title="V2 Geometry Summary")
     table.add_column("Pair")
     table.add_column("Ordered", justify="right")
     table.add_column("Optimal", justify="right")
@@ -638,6 +915,42 @@ def print_final_table(results: pd.DataFrame) -> None:
             f"{row['random_permutation_percentile']:.1f}",
         )
     console.print(table)
+
+    dim_table = Table(title="V3 Dimensionality Summary")
+    dim_table.add_column("Pair")
+    dim_table.add_column("Orient", justify="right")
+    dim_table.add_column("Best k", justify="right")
+    dim_table.add_column("k90 shape", justify="right")
+    dim_table.add_column("k95 shape", justify="right")
+    dim_table.add_column("PR mean", justify="right")
+    dim_table.add_column("Entropy dim", justify="right")
+    for _, row in results.iterrows():
+        dim_table.add_row(
+            f"{row['domain_a']} / {row['domain_b']}",
+            f"{row['best_orientation_similarity']:.3f}",
+            str(int(row["best_k_by_orientation"])),
+            str(int(row["k_90_shape_recovery"])),
+            str(int(row["k_95_shape_recovery"])),
+            f"{row['pair_mean_participation_ratio']:.2f}",
+            f"{row['pair_mean_spectral_entropy_dim']:.2f}",
+        )
+    console.print(dim_table)
+
+    plaus_table = Table(title="V3 Plausibility Summary")
+    plaus_table.add_column("Pair")
+    plaus_table.add_column("Geometry", justify="right")
+    plaus_table.add_column("Plaus", justify="right")
+    plaus_table.add_column("Combined", justify="right")
+    plaus_table.add_column("Most suspicious")
+    for _, row in results.iterrows():
+        plaus_table.add_row(
+            f"{row['domain_a']} / {row['domain_b']}",
+            f"{row['optimal_pearson']:.3f}",
+            f"{row['average_plausibility_score']:.3f}",
+            f"{row['combined_score']:.3f}",
+            str(row["most_suspicious_mapping"]),
+        )
+    console.print(plaus_table)
 
     strongest = results.loc[results["optimal_pearson"].idxmax()]
     weakest = results.loc[results["optimal_pearson"].idxmin()]

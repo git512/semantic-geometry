@@ -16,6 +16,7 @@ class Concept:
     id: str
     label: str
     description: str = ""
+    role: str = "unknown"
 
     def embedding_text(self, mode: str) -> str:
         if mode == "label_only" or not self.description:
